@@ -1,7 +1,7 @@
 # epicsDevTektronixMSO
 Python-based EPICS PVAccess server for Tektronix MSO scopes.<br>
 
-## installation and run
+## Installation and run
 ```
 pip install  epicsDevTektronixMSO
 python -m epicsDevTektronixMSO -h
