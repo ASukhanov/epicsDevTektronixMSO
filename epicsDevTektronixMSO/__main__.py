@@ -1,4 +1,4 @@
-"""PVAccess server of Tektronix MSO scopes"""
+"""Server of Tektronix MSO oscilloscopes for EPICS PVAccess"""
 import argparse
 from . import  mainModule
 
@@ -7,16 +7,14 @@ def main():
     parser = argparse.ArgumentParser(description = __doc__,
       formatter_class=argparse.ArgumentDefaultsHelpFormatter,
       epilog=f'{mainModule.C_.AppName, mainModule.__version__}')
-    parser.add_argument('-a','--addr', default= '130.199.41.111:4000', help=
+    parser.add_argument('-a','--addr', default= '192.168.1.111:4000', help=
 'Intstrument address:port')    
     parser.add_argument('-C','--channels', type=int, default=4, help=
 'Number of channels at the scope')
     parser.add_argument('-l', '--listPVs', action='store_true', help=
 'List all generated PVs')
     parser.add_argument('-p', '--prefix', default='tekMSO:', help=
-'Prefix, to be applied to all PVs')
-    parser.add_argument('-t', '--timing', help=
-'Parameter to be benchmarked')
+'Prefix, to be applied to all PV names')
     parser.add_argument('-v', '--verbose', action='count', default=0, help=
 'Show more log messages (-vv: show even more)')
     parser.add_argument('-w', '--waveforms', action='store_false', help=

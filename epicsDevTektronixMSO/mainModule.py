@@ -1,7 +1,8 @@
-"""PVAccess server for Tektronix MSO oscilloscopes.
+"""Server of Tektronix MSO oscilloscopes for EPICS PVAccess.
 """
 # pylint: disable=invalid-name
 __version__= 'v0.1.1 2026-01-05'# timestamps corrected
+#TODO: remove WFMOutpre? query from acquire_waveforms.
 
 import sys
 #import os
@@ -109,7 +110,6 @@ def start():
     set_server('Start')
 
     # Loop
-    #Server.forever(providers = list(C_.PVs.values()))
     C_.server = Server(providers=list(C_.PVs.values()))
     printi(f'Start server with polling interval {pvv("polling")}')
     while not C_.serverState.startswith('Exit'):

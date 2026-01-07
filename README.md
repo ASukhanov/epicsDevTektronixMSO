@@ -8,7 +8,7 @@ python -m epicsDevTektronixMSO -h
 
 ```
 
-## Test Control and Plotting
+## Test Control GUI and Plotting
 Requirements:<br>
 - **pypeto** python module for control application
 - **pvplot** python module for plotting application
@@ -21,4 +21,5 @@ of your choise.
 python -m pypeto -c folder -f scopeTektronixMSO
 python -m pvplot -a V:tekMSO: "c1Waveform c2Waveform c3Waveform c4Waveform c5Waveform c6Waveform"
 ```
-
+[Example of control GUI](docs/scope_pypet.png)
+[Example of plotting app](docs/scope_pvplot.png)
