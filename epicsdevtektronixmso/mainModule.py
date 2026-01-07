@@ -1,7 +1,7 @@
 """Server of Tektronix MSO oscilloscopes for EPICS PVAccess.
 """
 # pylint: disable=invalid-name
-__version__= 'v0.1.1 2026-01-05'# timestamps corrected
+__version__= 'v0.1.2 2026-01-06'# error handling improved, cleanup
 #TODO: remove WFMOutpre? query from acquire_waveforms.
 
 import sys
@@ -57,9 +57,11 @@ EpicsType = {
 }
 #``````````````````Constants``````````````````````````````````````````````````
 Threadlock = threading.Lock()
+PORT = ':4000'# IP port of the instrument
 OK = 0
 IF_CHANGED =True
 ElapsedTime = {}
+BigEndian = False# Defined in configure_scope(WFMOUTPRE:BYT_Or LSB)
 #```````````````````Helper methods````````````````````````````````````````````
 def printTime(): return time.strftime("%m%d:%H%M%S")
 def printi(msg): print(f'inf_@{printTime()}: {msg}')
@@ -88,7 +90,10 @@ def pvv(pvname):
 
 def publish(pvname, value, ifChanged=False, t=None):
     """Post PV with new value"""
-    pv = pvobj(pvname)
+    try:
+        pv = pvobj(pvname)
+    except KeyError:
+        return
     if t is None:
         t = time.time()
     if not ifChanged or pv.current() != value:
@@ -102,6 +107,19 @@ def query(pvnames, explicitSCPIs=None):
     combinedScpi = '?;:'.join(scpis) + '?'
     r = C_.scope.query(combinedScpi)
     return r.split(';')
+
+def configure_scope():
+    """Configure the data formatting parameters of the scope"""
+    print('>configure_scope')
+    C_.scope.write('HORizontal:DELay:MODe ON')
+    C_.scope.write('HORizontal:MODE MANual')
+    C_.scope.write('HORizontal:MODE:MANual:CONFIGure HORIZontalscale')
+
+    #C_.scope.write('DATa:ENCdg SRIBINARY')
+    C_.scope.write((  ':WFMOUTPRE:ENCdg BINARY;'
+                        ':WFMOUTPRE:BN_Fmt RI;'
+                        ':WFMOUTPRE:BYT_NR 2;'
+                        f':WFMOUTPRE:BYT_Or LSB;'))
 
 #``````````````````Initialization and run``````````````````````````````````````
 def start():
@@ -135,7 +153,7 @@ def poll():
     if trigger_is_detected():
         acquire_waveforms()
 
-    printvv(f'poll {C_.cycle}')
+    #print(f'poll {C_.cycle}')
 
 def rareUpdate():
     """Called for infrequent updates"""
@@ -161,19 +179,16 @@ def create_PVs():
     PvDef = namedtuple('PvDef',
 [   'name',     'desc',                             'value', 'writable', 'fields', 'extra'], defaults=[False,{},{}])
     C_.PvDefs = [
-# test PVs
-PvDef('strS',   'Test string',                      'Hello world', W),
-PvDef('int',    'Integer',                          27, W, {U:'digits',CH:16}),
-# Note: Currently there is no distinction between fixed and floating arrays.
-PvDef('intVarArray', 'Variable array of integers',  [0], W),
-PvDef('floatArray',  'Variable array of floats',    [0.], W, {U:'V'}),
 
-# instruments's PVs
+# Mandatory PVs
+PvDef('version',    'Program version',              __version__),
 PvDef('status',     'Server status',                ''),
-PvDef('hostPort',   'IP_address:port',              C_.pargs.addr, R),
 PvDef('server',     'Server control',               'Stop', W, {},
     {LV:'Start,Stop,Clear,Exit,Started,Stopped,Exited',SET:set_server}),
 PvDef('polling',    'Polling interval',              1.0, W, {U:'S'}),
+
+# instruments's PVs
+PvDef('hostPort',   'IP_address:port',              C_.pargs.addr+PORT, R),
 PvDef('instrCtrl',  'Scope control commands',       '*OPC', W, {},
     {LV:'*OPC,*OPC?,*CLS?,*RST,!d,*TST,*IDN?,ACQuire:STATE?,AUTOset EXECute'}),
 PvDef('instrCmdS',  'Execute a scope command',      '*IDN?', W, {},
@@ -224,7 +239,6 @@ PvDef('setup', 'Save/recall instrument state',      'Setup', W, {},
     ChannelTemplates = [
 PvDef('c$VoltsPerDiv', 'Vertical sensitivity',      0., W, {U:'V/du'},
     {SCPI:'CH$:SCAle'}),
-PvDef('c$VoltsPerDiv', 'Vertical sensitivity associated with waveform', 0., W, {U:'V/du'}),
 PvDef('c$Position',    'Vertical position',         0., W, {U:'du'},
     {SCPI:'CH$:OFFSet 0;POSition'}),
 PvDef('c$Coupling',    'Coupling',                  'DC', W, {},
@@ -307,9 +321,7 @@ PvDef('c$Peak2Peak',   'Peak to peak amplitude',    0., R, {U:'du'}),
             @pv.put
             def handle(pv, op):
                 ct = time.time()
-                tt0 = timer()
                 v = op.value()
-                tt1 = timer()
                 vr = v.raw.value
                 printvv(f'v type: {type(v)} = {v}, {vr}')
                 if isinstance(v, ntenum):
@@ -331,15 +343,8 @@ PvDef('c$Peak2Peak',   'Peak to peak amplitude',    0., R, {U:'du'}),
                     printv(f'>scopeCmd({scpi})')
                     scopeCmd(f'{scpi} {vr}')
 
-                tt2 = timer()
                 pv.post(vr, timestamp=ct) # update subscribers
                 op.done()
-                tt3 = timer()
-                dt = [round(i,6) for i in (tt2-tt1,tt3-tt2,tt1-tt0)]
-                #print(f'timing set,post: {dt}')
-                if C_.pargs.timing:
-                    C_.timeDelta['local set'].append(dt[0])
-                    C_.timeDelta['PVA_post'].append(dt[1])
 
         if C_.pargs.listPVs:
             printi(f'PV {pv.name} created: {pv}')
@@ -378,15 +383,13 @@ def init_visa():
         printe(f'in visa.ResourceManager: {e}')
         sys.exit(1)
 
-    rn = C_.pargs.addr.replace(':','::')
+    rn = C_.pargs.addr+PORT.replace(':','::')
     resourceName = 'TCPIP::'+rn+'::SOCKET'
     printi(f'Open resource {resourceName}')
     C_.scope = C_.rm.open_resource(resourceName)
     C_.scope.set_visa_attribute( visa.constants.VI_ATTR_TERMCHAR_EN, True)
     C_.scope.timeout = 2000 # ms
     print('C_scope created')
-    print(f"IDN: {C_.scope.query('*IDN?')}")
-
     try:
         C_.scope.write('*CLS') # clear ESR, previous error messages will be cleared
     except Exception as e:
@@ -406,18 +409,16 @@ def init_visa():
         C_.scope.write('!d') 
         sys.exit(1)
 
+    idn = C_.scope.query('*IDN?')
+    print(f"IDN: {idn}")
+    if not idn.startswith('TEKTRONIX'):
+        print('ERROR: instrument is not TEKTRONIX')
+        sys.exit(1)
+
     C_.scope.encoding = 'latin_1'
     C_.scope.read_termination = '\n'#Important.
 
-    C_.scope.write('HORizontal:DELay:MODe ON')
-    C_.scope.write('HORizontal:MODE MANual')
-    C_.scope.write('HORizontal:MODE:MANual:CONFIGure HORIZontalscale')
-
-    #C_.scope.write('DATa:ENCdg SRIBINARY')
-    C_.scope.write((  ':WFMOUTPRE:ENCdg BINARY;'
-                        ':WFMOUTPRE:BN_Fmt RI;'
-                        ':WFMOUTPRE:BYT_NR 2;'
-                        ':WFMOUTPRE:BYT_Or LSB;'))
+    configure_scope()
 
 # def close_visa(C_):
     # C_.rm.close()
@@ -437,6 +438,7 @@ def set_server(state=None):
     state = str(state)
     if state == 'Start':
         printi('starting the server')
+        configure_scope()
         adopt_local_setting()
         publish('server','Started')
     elif state == 'Stop':
@@ -566,6 +568,7 @@ def trigLevelCmd():
 #``````````````````Acquisition-related functions``````````````````````````````
 def trigger_is_detected():
     """check if scope was triggered"""
+    ts = timer()
     try:
         with Threadlock:
             r = query(['trigState','scopeAcqCount','recLength',
@@ -584,7 +587,6 @@ def trigger_is_detected():
         return False
 
     # last query was successfull, clear error counts
-    ElapsedTime['trigger_detection'] = timer()
     for i in C_.exceptionCount:
         C_.exceptionCount[i] = 0
     try:
@@ -608,7 +610,7 @@ def trigger_is_detected():
          'trigState':trigstate}
     for pvname,value in d.items():
         publish(pvname, value, IF_CHANGED, t=C_.trigtime)
-    ElapsedTime['trigger_detection'] -= timer()
+    ElapsedTime['trigger_detection'] = timer() - ts
     return True
 
 def acquire_waveforms():
@@ -617,43 +619,46 @@ def acquire_waveforms():
     if not C_.pargs.waveforms:
         return
     publish('acqCount', pvv('acqCount') + 1, t=C_.trigTime)
-    #print('rl,channels',rl,channels)
     ElapsedTime['acquire_wf'] = timer()
     ElapsedTime['publish_wf'] = 0.
     ElapsedTime['query_wf'] = 0.
     ElapsedTime['preamble'] = 0.
     channels = C_.channelsTriggered.split(',')
+    if channels[0] == 'NONE':
+        channels = []
     for ch in channels:
         # refresh scalings
         #TODO: this section is quite time consuming and can be avoided
         # but if we monitor XINCR, YMULT, YZERO, V/DIV separately then it takes twice longer
-        ts = timer()
+        ts = timer()            
         try:
             # most of the time is spent here, 4 times longer than the reading of waveform:
             with Threadlock:
-                preamble = C_.scope.query(f'DATA:SOUrce {ch};:WFMOutpre?')
-            #TODO: query and decode the WFMOutpre in the rareUpdate
-            #t = timer()
-            #C_.scope.write(f'DATA:SOUrce {ch}')
-            #print(f'Data source time: {timer()-t}')
-            #t = timer()
-            #preamble = C_.scope.query(f':WFMOutpre?')
-            #print(f'preamble time: {timer()-t}')
+                #preamble = C_.scope.query(f'DATA:SOUrce {ch};:WFMOutpre?')
+                C_.scope.write(f'DATA:SOUrce {ch}')
+                #dt1 = timer() - ts
+                # doing WFMOutpre? outside of the acquire_waveforms saves 0.3 s
+                preamble = C_.scope.query(f':WFMOutpre?')
         except Exception as e:
             printe(f'Exception in getting waveform preamble for {ch}:{e}')
             break
-        ElapsedTime['preamble'] -= timer() - ts
+        dt = timer() - ts
+        #print(f'dt {ch}: {dt1,dt}')
+        ElapsedTime['preamble'] -= dt
         #TODO: if preamble did not change, then we can skip its decoding, we can save ~65us
         preambleMap = decode_preamble(preamble)# timing=60us
-        #print(f'preambleMap:{preambleMap.keys()}')
         if preambleMap is None:
             break
 
         xincr = float(preambleMap['XINCR'])
         ymult = float(preambleMap['YMULT'])
         yzero = float(preambleMap['YZERO'])
-        bigEndian = preambleMap['BYT_Or'] == 'MSB'
         vPerDiv = preambleMap['V/DIV']
+        # for debugging, if query(f':WFMOutpre?') is commented out
+        #xincr = 3.20E-9
+        #ymult = 15.6250E-6
+        #yzero = 0.
+        #vPerDiv = pvv(f'c{ch[2]}VoltsPerDiv')
 
         if xincr != C_.prevTscale:
             msg = f'Horizontal scale changed, new tAxis. {xincr,C_.prevTscale}'
@@ -666,7 +671,7 @@ def acquire_waveforms():
         try:
             with Threadlock:
                 bin_wave = C_.scope.query_binary_values('curve?',
-                    datatype='h', is_big_endian=bigEndian,
+                    datatype='h', is_big_endian=BigEndian,
                     container=np.array)
         except Exception as e:
             printe(f'in query_binary_values: {e}')
@@ -680,7 +685,7 @@ def acquire_waveforms():
 
         ts = timer()
         publish(f'c{ch[2]}Waveform', v, t=C_.trigTime)
-        publish(f'c{ch[2]}VoltsPerDiv', vPerDiv, t=C_.trigtime)
+        #publish(f'c{ch[2]}VoltsPerDiv', vPerDiv, t=C_.trigtime)
         try:
             publish(f'c{ch[2]}Peak2Peak',
                 (wfmax - wfmin)*ymult,
@@ -715,7 +720,7 @@ def decode_preamble(preamble):
             g = 1.
         voltsPerDiv = float(number)*g
         preambleMap['V/DIV'] = voltsPerDiv
-        printv(f'preambleMap: {preambleMap}')
+        printvv(f'preambleMap: {preambleMap}')
     except Exception as e:
         printw(f'wrong preamble: {preamble}: {e}')
         return None

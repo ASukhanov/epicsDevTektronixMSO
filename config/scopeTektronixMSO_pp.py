@@ -77,8 +77,9 @@ string or device:parameter and the value is dictionary of the features.
 
         #``````````mandatory member```````````````````````````````````````````
         self.rows = [
-['Device:',D,D+'server',D+'setup','scope time:',{D+'dateTime':span(2,1)},_],
-['Status:',{D+'status': span(8,1)}],
+['Device:', D, {D+'version':span(2,1)},_, 'scope time:', {D+'dateTime':span(2,1)},_],
+['State:', D+'server', 'Recall:', D+'setup',],
+['Status:', {D+'status': span(8,1)}],
 ['Polling Interval:', D+'polling',_,_,_,Plot,scopeWWW],
 #'', {D+'ReadSetting':
 #{**color('cyan'),**span(2,1)}},_,_,],

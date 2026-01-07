@@ -7,7 +7,7 @@ def main():
     parser = argparse.ArgumentParser(description = __doc__,
       formatter_class=argparse.ArgumentDefaultsHelpFormatter,
       epilog=f'{mainModule.C_.AppName, mainModule.__version__}')
-    parser.add_argument('-a','--addr', default= '192.168.1.111:4000', help=
+    parser.add_argument('-a','--addr', default= '192.168.1.111', help=
 'Intstrument address:port')    
     parser.add_argument('-C','--channels', type=int, default=4, help=
 'Number of channels at the scope')
