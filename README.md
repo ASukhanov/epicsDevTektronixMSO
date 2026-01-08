@@ -1,5 +1,5 @@
 # epicsDevTektronixMSO
-Python-based EPICS PVAccess server for Tektronix MSO scopes.<br>
+Python-based EPICS PVAccess server for Tektronix MSO oscilloscopes.<br>
 It is based on [p4p package](https://epics-base.github.io/p4p/) and it can run standalone on Linux, OSX, and Windows platforms.<br>
 
 ## Installation and run
