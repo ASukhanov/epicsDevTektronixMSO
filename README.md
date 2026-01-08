@@ -5,7 +5,7 @@ It is based on [p4p package](https://epics-base.github.io/p4p/) and it can run s
 ## Installation and run
 ```
 pip install  epicsDevTektronixMSO
-python -m epicsDevTektronixMSO -h
+python -m epicsdevtektronixmso -h
 ```
 
 ## Test Control GUI and Plotting
@@ -18,7 +18,7 @@ They both could be installed using ```pip install pypeto, pvplot```
 To run the control application, copy /config/scopeTektronixMSO_pp.py to a folder
 of your choise.
 ```
-python -m pypeto -c folder -f scopeTektronixMSO
+python -m pypeto -c config -f scopeTektronixMSO
 python -m pvplot -a V:tekMSO: "c1Waveform c2Waveform c3Waveform c4Waveform c5Waveform c6Waveform"
 ```
 [Example of control GUI](docs/scope_pypet.png)<br>
